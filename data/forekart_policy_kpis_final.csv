@@ -1,0 +1,4 @@
+policy,total_demand,units_sold,unmet_demand,stockout_records,average_stock,holding_cost,rush_order_cost,normal_order_fees,lost_sale_cost,procurement_spend,fill_rate,inventory_carrying_ordering_cost,operating_cost,excess_stock_units
+ARIMA,32791,32699,92,17,46.894017094017094,77421.7,500,48500,18400,47428900.0,99.71943521088103,126421.7,144821.7,0.0
+Baseline,32791,32403,388,58,31.194017094017095,52585.4,1500,55900,77600,47092300.0,98.81674849806349,109985.4,187585.4,0.0
+Random Forest,32791,32783,8,2,57.99059829059829,99032.3,500,44200,1600,47835600.0,99.97560306181575,143732.3,145332.3,0.0

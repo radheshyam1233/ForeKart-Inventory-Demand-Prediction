@@ -1,0 +1,3 @@
+policy,stockout_reduction_pct,overstock_reduction_pct,rush_cost_reduction_pct,inventory_cost_reduction_pct
+ARIMA,70.6896551724138,,66.66666666666667,-14.944074395328837
+Random Forest,96.55172413793103,,66.66666666666667,-30.68307248052923

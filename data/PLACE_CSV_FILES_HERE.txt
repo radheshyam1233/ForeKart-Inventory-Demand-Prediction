@@ -1,1 +1,0 @@
-Copy your exported synthetic ForeKart CSVs into this directory. See README.md for exact filenames.

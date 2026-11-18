@@ -1,0 +1,2 @@
+model,test_start,test_end,test_records,mae,rmse
+ARIMA,2025-10-28,2025-12-31,1170,5.0682951696053875,6.492521763627563

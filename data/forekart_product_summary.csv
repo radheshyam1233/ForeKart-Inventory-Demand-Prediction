@@ -1,0 +1,7 @@
+product,total_revenue,total_demand,units_sold,unmet_demand,stockout_days,fill_rate
+Shoes,91541440.0,28973,28973,0,0,100.0
+Smartwatch,86813550.0,19584,19584,0,0,100.0
+Headphones,64823500.0,26287,26287,0,0,100.0
+Keyboard,46247960.0,21367,21367,0,0,100.0
+Backpack,42497820.0,23931,23931,0,0,100.0
+Water Bottle,26366080.0,33462,33462,0,0,100.0

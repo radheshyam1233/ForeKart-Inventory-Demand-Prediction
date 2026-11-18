@@ -1,0 +1,19 @@
+product,channel,closing_stock,average_daily_demand,stock_coverage_days,recommendation
+Keyboard,Website,116,18.01,6.440866185452526,No promotion needed
+Water Bottle,Marketplace,120,23.65,5.073995771670191,No promotion needed
+Backpack,Marketplace,150,17.133333333333333,8.754863813229573,No promotion needed
+Backpack,Mobile App,213,25.08,8.492822966507177,No promotion needed
+Backpack,Website,152,20.956666666666667,7.253061873707651,No promotion needed
+Headphones,Marketplace,102,18.94,5.385427666314677,No promotion needed
+Headphones,Mobile App,162,27.61,5.867439333574792,No promotion needed
+Headphones,Website,140,22.123333333333335,6.328160313394606,No promotion needed
+Water Bottle,Mobile App,51,35.446666666666665,1.4387812676321234,Avoid promotion; low stock
+Keyboard,Marketplace,105,15.273333333333333,6.874727193365342,No promotion needed
+Shoes,Marketplace,51,21.113333333333333,2.415535206820335,Avoid promotion; low stock
+Shoes,Mobile App,62,30.473333333333333,2.0345657405381754,Avoid promotion; low stock
+Shoes,Website,41,24.08,1.7026578073089702,Avoid promotion; low stock
+Smartwatch,Marketplace,80,14.346666666666666,5.576208178438662,No promotion needed
+Smartwatch,Mobile App,130,20.723333333333333,6.273122084606723,No promotion needed
+Smartwatch,Website,51,16.16,3.155940594059406,No promotion needed
+Keyboard,Mobile App,46,23.016666666666666,1.998551774076756,Avoid promotion; low stock
+Water Bottle,Website,108,28.573333333333334,3.77974801679888,No promotion needed
