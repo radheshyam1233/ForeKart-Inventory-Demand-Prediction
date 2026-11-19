@@ -1,5 +1,7 @@
 """ForeKart | Demand Forecasting & Inventory Analytics."""
 from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -15,6 +17,7 @@ h1,h2,h3{letter-spacing:-.025em}
 </style>
 """, unsafe_allow_html=True)
 
+
 @st.cache_data(show_spinner=False)
 def load_csv(name):
     path = DATA / name
@@ -26,8 +29,35 @@ def load_csv(name):
         st.warning(f"Unable to read {name}: {exc}")
         return None
 
+
 def note_missing(names):
     st.info("To display this section, add the following CSV file(s): " + ", ".join(f"`{name}`" for name in names))
+
+
+def forecast_frame(frame, prediction_name):
+    """Normalize forecast keys and values; average duplicate keys rather than multiplying rows on merge."""
+    keys = ["date", "product", "channel"]
+    result = frame[keys + ["predicted_demand"]].copy()
+    result["date"] = pd.to_datetime(result["date"], errors="coerce")
+    result["product"] = result["product"].astype("string").str.strip()
+    result["channel"] = result["channel"].astype("string").str.strip()
+    result["predicted_demand"] = pd.to_numeric(result["predicted_demand"], errors="coerce")
+    result = result.dropna(subset=keys + ["predicted_demand"])
+    return result.groupby(keys, as_index=False, dropna=False)["predicted_demand"].mean().rename(columns={"predicted_demand": prediction_name})
+
+
+def error_metrics(actual, predicted):
+    valid = pd.DataFrame({"actual": actual, "predicted": predicted}).apply(pd.to_numeric, errors="coerce").dropna()
+    if valid.empty:
+        return None
+    errors = valid["actual"] - valid["predicted"]
+    return {"MAE": errors.abs().mean(), "RMSE": np.sqrt((errors ** 2).mean()), "n": len(valid)}
+
+
+def display_pct(value):
+    number = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return "Not available" if pd.isna(number) else f"{number:,.1f}%"
+
 
 sales = load_csv("forekart_cleaned.csv")
 comparison = load_csv("forekart_model_comparison.csv")
@@ -37,114 +67,147 @@ summary = load_csv("forekart_policy_kpis_final.csv")
 improvements = load_csv("forekart_kpi_improvements_final.csv")
 tuning = load_csv("forekart_inventory_tuning.csv")
 channel_summary = load_csv("forekart_channel_summary.csv")
-resume_dashboard = load_csv("forekart_resume_dashboard.csv")
 
 st.title("📦 ForeKart | Inventory Demand Prediction")
-st.caption("ARIMA + Random Forest • Inventory policy optimization • Multi-channel insights")
-st.info("**Portfolio demonstration:** Data is synthetic, and inventory improvements are simulated—not observed company results.")
+st.caption("ARIMA + Random Forest • Inventory policy simulation • Multi-channel analysis")
+st.info("**Portfolio demonstration:** This project uses synthetic data. Forecast evaluation and inventory outcomes are not verified company results.")
 
 tab1, tab2, tab3 = st.tabs(["📈 Demand Forecasting", "📦 Inventory Optimization", "🛍️ Channels & Promotions"])
 
 with tab1:
     st.header("Demand forecasting | Resume bullet 1")
-    st.write("Compare ARIMA and Random Forest forecasts across six products and three sales channels. The inventory goals are **10% fewer stockouts** and **15% less overstock**.")
+    st.write("Compare ARIMA and Random Forest predictions for a selected product and sales channel.")
+
     if comparison is not None and {"model", "MAE", "RMSE"}.issubset(comparison.columns):
         metrics = comparison[["model", "MAE", "RMSE"]].copy()
+        metrics["MAE"] = pd.to_numeric(metrics["MAE"], errors="coerce")
+        metrics["RMSE"] = pd.to_numeric(metrics["RMSE"], errors="coerce")
         st.subheader("Forecast accuracy (lower is better)")
         st.dataframe(metrics, use_container_width=True, hide_index=True)
-        st.bar_chart(metrics.set_index("model")[["MAE", "RMSE"]])
+        st.caption("MAE and RMSE are in demand units. ARIMA has the lower MAE in this export; Random Forest has the lower RMSE. The best choice depends on the error measure and business cost of errors.")
     else:
         note_missing(["forekart_model_comparison.csv"])
 
-    if arima is not None and rf_forecasts is not None:
-        needed = {"date", "product", "channel", "predicted_demand"}
-        if needed.issubset(arima.columns) and needed.issubset(rf_forecasts.columns):
-            products = sorted(set(arima["product"].dropna().astype(str)) & set(rf_forecasts["product"].dropna().astype(str)))
-            channels = sorted(set(arima["channel"].dropna().astype(str)) & set(rf_forecasts["channel"].dropna().astype(str)))
-            if products and channels:
-                c1, c2 = st.columns(2)
-                product = c1.selectbox("Product", products)
-                channel = c2.selectbox("Sales channel", channels)
-                cols = ["date", "product", "channel", "predicted_demand"]
-                a = arima[cols].rename(columns={"predicted_demand": "ARIMA"})
-                r = rf_forecasts[cols].rename(columns={"predicted_demand": "Random Forest"})
-                selected = a.merge(r, on=["date", "product", "channel"], how="inner")
-                if "actual_demand" in arima.columns:
-                    actual = arima[["date", "product", "channel", "actual_demand"]].rename(columns={"actual_demand": "Actual demand"})
-                    selected = selected.merge(actual, on=["date", "product", "channel"], how="left")
-                selected = selected[(selected["product"].astype(str) == product) & (selected["channel"].astype(str) == channel)].copy()
-                selected["date"] = pd.to_datetime(selected["date"], errors="coerce")
-                selected = selected.dropna(subset=["date"]).sort_values("date")
-                if not selected.empty:
-                    st.subheader("Daily demand: actual vs predicted")
-                    chart_cols = [name for name in ["Actual demand", "ARIMA", "Random Forest"] if name in selected.columns]
-                    st.line_chart(selected.set_index("date")[chart_cols])
-                else:
-                    st.info("No matching forecast rows for this product and channel.")
+    required = {"date", "product", "channel", "predicted_demand"}
+    if arima is not None and rf_forecasts is not None and required.issubset(arima.columns) and required.issubset(rf_forecasts.columns):
+        a = forecast_frame(arima, "ARIMA")
+        r = forecast_frame(rf_forecasts, "Random Forest")
+        forecast = a.merge(r, on=["date", "product", "channel"], how="inner", validate="one_to_one")
+
+        actual_source = arima if "actual_demand" in arima.columns else rf_forecasts if "actual_demand" in rf_forecasts.columns else None
+        if actual_source is not None:
+            actual = actual_source[["date", "product", "channel", "actual_demand"]].copy()
+            actual["date"] = pd.to_datetime(actual["date"], errors="coerce")
+            actual["product"] = actual["product"].astype("string").str.strip()
+            actual["channel"] = actual["channel"].astype("string").str.strip()
+            actual["actual_demand"] = pd.to_numeric(actual["actual_demand"], errors="coerce")
+            actual = actual.dropna(subset=["date", "product", "channel", "actual_demand"])
+            actual = actual.groupby(["date", "product", "channel"], as_index=False)["actual_demand"].mean()
+            forecast = forecast.merge(actual, on=["date", "product", "channel"], how="inner", validate="one_to_one")
+
+        products = sorted(forecast["product"].dropna().astype(str).unique())
+        channels = sorted(forecast["channel"].dropna().astype(str).unique())
+        if products and channels:
+            c1, c2 = st.columns(2)
+            product = c1.selectbox("Product", products)
+            channel = c2.selectbox("Sales channel", channels)
+            selected = forecast.loc[(forecast["product"] == product) & (forecast["channel"] == channel)].sort_values("date").copy()
+            if not selected.empty:
+                start_date, end_date = selected["date"].min(), selected["date"].max()
+                st.subheader("Daily demand: actual vs predicted")
+                st.caption(f"Product: {product} · Channel: {channel} · Period: {start_date:%b %d, %Y}–{end_date:%b %d, %Y} · {len(selected):,} matched daily observations")
+                st.caption("Horizontal axis: Date · Vertical axis: Demand (units per day)")
+                chart_data = selected.set_index("date")[["actual_demand", "ARIMA", "Random Forest"]].rename(columns={"actual_demand": "Actual demand"})
+                st.line_chart(chart_data, height=380)
+
+                st.markdown("**Selected-series test/evaluation errors**")
+                metric_cols = st.columns(2)
+                for col, model in zip(metric_cols, ["ARIMA", "Random Forest"]):
+                    result = error_metrics(selected["actual_demand"], selected[model])
+                    if result:
+                        col.metric(f"{model} MAE", f"{result['MAE']:.2f} units")
+                        col.caption(f"RMSE: {result['RMSE']:.2f} units · n = {result['n']:,} matched dates")
+                st.caption("The forecast files pair predictions with actual demand, so this is a historical evaluation comparison—not a future forecast. The exports do not identify a train/test boundary; confirm the time-based split in the model-generation code before describing these as held-out test results.")
+            else:
+                st.info("No matching forecast rows for this product and channel.")
+        else:
+            st.info("No valid matching forecast rows were found after cleaning dates and duplicate keys.")
+    elif arima is None or rf_forecasts is None:
+        note_missing([name for name, frame in [("forekart_all_arima_forecasts.csv", arima), ("forekart_rf_forecasts.csv", rf_forecasts)] if frame is None])
     else:
-        note_missing(["forekart_all_arima_forecasts.csv", "forekart_rf_forecasts.csv"])
+        st.warning("Forecast CSVs are missing one or more required columns: date, product, channel, predicted_demand.")
 
 with tab2:
     st.header("Inventory optimization | Resume bullet 2")
-    st.write("Compare policies using validation-selected safety stock and coverage settings. **Targets:** 20% lower rush-order costs and 25% lower inventory expenses.")
+    st.write("Review replenishment-policy simulation outcomes. These results depend on the simulation assumptions and are not real business performance.")
 
     if tuning is not None and {"safety_z", "cover_days"}.issubset(tuning.columns) and not tuning.empty:
-        best = tuning.sort_values("operating_cost").iloc[0] if "operating_cost" in tuning.columns else tuning.iloc[0]
-        st.caption(f"Validation-selected parameters: safety Z = {best['safety_z']:g}; coverage = {int(best['cover_days'])} days.")
+        valid_tuning = tuning.copy()
+        if "operating_cost" in valid_tuning:
+            valid_tuning["operating_cost"] = pd.to_numeric(valid_tuning["operating_cost"], errors="coerce")
+            valid_tuning = valid_tuning.dropna(subset=["operating_cost"])
+        if not valid_tuning.empty:
+            best = valid_tuning.sort_values("operating_cost").iloc[0] if "operating_cost" in valid_tuning.columns else valid_tuning.iloc[0]
+            st.caption(f"Lowest-cost setting in the exported tuning results: safety Z = {best['safety_z']:g}; coverage = {int(best['cover_days'])} days. Selected on validation data; not an independently verified optimum.")
 
-    resume_rows = {}
-    if resume_dashboard is not None and "Resume Metric" in resume_dashboard.columns:
-        resume_rows = dict(zip(resume_dashboard["Resume Metric"].astype(str).str.strip(), resume_dashboard["Actual Simulation Result"].astype(str).str.strip()))
-
-    labels = [
-        ("Stockout reduction", "10% target", resume_rows.get("Stockout Reduction", "10%")),
-        ("Overstock reduction", "15% target", resume_rows.get("Overstock Reduction", "verified")),
-        ("Rush-order cost reduction", "20% target", resume_rows.get("Rush-Order Cost Reduction", "20%")),
-        ("Inventory expense reduction", "25% target", resume_rows.get("Inventory Expense Reduction", "achieved")),
-    ]
-    cols = st.columns(4)
-    for col, (label, target, result) in zip(cols, labels):
-        col.metric(label, result, help=target + "; measured on synthetic-data simulation")
-        col.caption(target)
-
-    st.caption("The inventory metrics are based on synthetic simulation results. Target values are portfolio claims and should not be presented as verified company performance.")
-    st.subheader("Measured reductions vs baseline")
-
+    st.subheader("Reported simulation changes vs baseline")
     if improvements is not None and "policy" in improvements.columns:
-        policies = improvements["policy"].dropna().tolist()
-        if policies:
-            selected_policy = st.selectbox("Policy", policies, index=policies.index("Random Forest") if "Random Forest" in policies else 0)
-            row = improvements.loc[improvements["policy"] == selected_policy].iloc[0]
-            plot_data = pd.DataFrame({
-                "Metric": ["Stockout events", "Rush-order fees", "Carrying + ordering costs"],
-                "Reduction (%)": [row.get("stockout_reduction_pct"), row.get("rush_cost_reduction_pct"), row.get("inventory_cost_reduction_pct")],
-            }).set_index("Metric")
-            st.bar_chart(plot_data)
+        improvement_cols = {
+            "stockout_reduction_pct": "Stockout reduction (%)",
+            "overstock_reduction_pct": "Overstock reduction (%)",
+            "rush_cost_reduction_pct": "Rush-order cost reduction (%)",
+            "inventory_cost_reduction_pct": "Inventory cost reduction (%)",
+        }
+        available = [column for column in improvement_cols if column in improvements.columns]
+        if available:
+            view = improvements[["policy"] + available].copy().rename(columns=improvement_cols)
+            for column in view.columns[1:]:
+                view[column] = pd.to_numeric(view[column], errors="coerce")
+            st.dataframe(view, use_container_width=True, hide_index=True)
+            st.caption("Blank values mean the result is unavailable. Positive values indicate a reduction; negative values mean the metric increased versus baseline. Do not substitute project targets for missing or negative simulation results.")
+        else:
+            st.warning("The improvement file has no recognized KPI columns.")
     else:
         note_missing(["forekart_kpi_improvements_final.csv"])
 
     if summary is not None and "policy" in summary.columns:
         st.subheader("Policy comparison")
         cols = ["policy", "total_demand", "units_sold", "stockout_records", "fill_rate", "average_stock", "rush_order_cost", "inventory_carrying_ordering_cost", "operating_cost"]
-        st.dataframe(summary[[c for c in cols if c in summary.columns]], use_container_width=True, hide_index=True)
-        st.caption("Operating cost includes simulated holding, ordering and lost-sale penalties.")
+        display = summary[[c for c in cols if c in summary.columns]].copy()
+        st.dataframe(display, use_container_width=True, hide_index=True)
+        st.caption("Use the definitions and assumptions from the simulation code when interpreting fill rate, stockouts, and operating cost. The README documents known simulation limitations that should be resolved before treating these as decision-grade results.")
     else:
         note_missing(["forekart_policy_kpis_final.csv"])
 
 with tab3:
     st.header("Multi-channel demand & promotions | Resume bullet 3")
-    st.write("Explore Website, Mobile App and Marketplace demand, then examine observed associations between promotions and demand in the synthetic dataset.")
+    st.write("Compare observed demand across Website, Mobile App, and Marketplace channels, and inspect promotional versus non-promotional records.")
     if sales is not None and {"channel", "customer_demand", "units_sold"}.issubset(sales.columns):
         df = sales.copy()
-        df["date"] = pd.to_datetime(df["date"], errors="coerce") if "date" in df.columns else pd.NaT
-        if "revenue" not in df.columns:
-            df["revenue"] = df["units_sold"] * df["selling_price"] if "selling_price" in df.columns else 0
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Demand (units)", f"{df['customer_demand'].sum():,.0f}")
-        c2.metric("Units sold", f"{df['units_sold'].sum():,.0f}")
-        c3.metric("Simulated revenue", f"{df['revenue'].sum():,.0f}")
+        df["customer_demand"] = pd.to_numeric(df["customer_demand"], errors="coerce")
+        df["units_sold"] = pd.to_numeric(df["units_sold"], errors="coerce")
+        df = df.dropna(subset=["channel", "customer_demand", "units_sold"])
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-        by_channel = df.groupby("channel", as_index=False).agg(demand=("customer_demand", "sum"), units_sold=("units_sold", "sum"), revenue=("revenue", "sum"))
+        revenue_available = "revenue" in df.columns or "selling_price" in df.columns
+        if "revenue" in df.columns:
+            df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
+        elif "selling_price" in df.columns:
+            df["selling_price"] = pd.to_numeric(df["selling_price"], errors="coerce")
+            df["revenue"] = df["units_sold"] * df["selling_price"]
+
+        c1, c2 = st.columns(2)
+        c1.metric("Customer demand (units)", f"{df['customer_demand'].sum():,.0f}")
+        c2.metric("Units sold", f"{df['units_sold'].sum():,.0f}")
+        if revenue_available:
+            st.metric("Synthetic revenue", f"{df['revenue'].sum(min_count=1):,.2f}", help="Calculated from supplied revenue or units sold × selling price; not verified company revenue.")
+
+        group_metrics = {"customer_demand": "sum", "units_sold": "sum"}
+        if revenue_available:
+            group_metrics["revenue"] = "sum"
+        by_channel = df.groupby("channel", as_index=False).agg(**{name: (name, agg) for name, agg in group_metrics.items()})
+        by_channel = by_channel.rename(columns={"customer_demand": "demand"})
         st.subheader("Channel performance")
         st.bar_chart(by_channel.set_index("channel")[["demand", "units_sold"]])
         st.dataframe(by_channel, use_container_width=True, hide_index=True)
@@ -156,11 +219,21 @@ with tab3:
 
         if "promotion" in df.columns:
             st.subheader("Promotion patterns")
-            df["promotion_group"] = df["promotion"].astype(str).str.lower().isin(["1", "true", "yes", "y"])
-            promo = df.groupby(["channel", "promotion_group"], as_index=False).agg(observations=("customer_demand", "size"), avg_demand=("customer_demand", "mean"), avg_units_sold=("units_sold", "mean"))
-            promo["promotion_group"] = promo["promotion_group"].map({True: "Promotion", False: "No promotion"})
-            st.dataframe(promo.rename(columns={"promotion_group": "promotion_status"}), use_container_width=True, hide_index=True)
-            st.caption("Promotional and non-promotional records are observational comparisons in generated data, not causal evidence.")
+            raw_promo = df["promotion"].astype("string").str.strip().str.lower()
+            promo_map = {"1": True, "true": True, "yes": True, "y": True, "0": False, "false": False, "no": False, "n": False}
+            df["promotion_group"] = raw_promo.map(promo_map)
+            promo_df = df.dropna(subset=["promotion_group"])
+            if not promo_df.empty:
+                promo = promo_df.groupby(["channel", "promotion_group"], as_index=False).agg(
+                    observations=("customer_demand", "size"),
+                    avg_demand=("customer_demand", "mean"),
+                    avg_units_sold=("units_sold", "mean"),
+                )
+                promo["promotion_group"] = promo["promotion_group"].map({True: "Promotion", False: "No promotion"})
+                st.dataframe(promo.rename(columns={"promotion_group": "promotion_status"}), use_container_width=True, hide_index=True)
+            else:
+                st.info("No recognized promotion values (true/false, yes/no, or 1/0) were found.")
+            st.caption("These are observational comparisons in synthetic data, not evidence that promotions caused a change in demand. Unrecognized or missing promotion values are excluded.")
         else:
             st.info("Promotion field not found in the sales dataset.")
     elif channel_summary is not None:
@@ -170,4 +243,4 @@ with tab3:
         note_missing(["forekart_cleaned.csv"])
 
 st.divider()
-st.caption("ForeKart | Portfolio analytics • Synthetic sales records • Simulation outcomes depend on replenishment assumptions and should not be presented as real company performance.")
+st.caption("ForeKart | Portfolio analytics • Synthetic sales records • Forecast and simulation outcomes depend on data and assumptions; do not present them as real company performance.")
