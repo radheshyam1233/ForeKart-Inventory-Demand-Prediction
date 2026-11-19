@@ -70,7 +70,7 @@ st.info("**Portfolio demonstration:** This project uses synthetic data. Forecast
 tab1, tab2, tab3 = st.tabs(["📈 Demand Forecasting", "📦 Inventory Optimization", "🛍️ Channels & Promotions"])
 
 with tab1:
-    st.header("Demand forecasting | Resume bullet 1")
+    st.header("Demand forecasting")
     st.write("Compare ARIMA and Random Forest predictions for a selected product and sales channel.")
 
     if comparison is not None and {"model", "MAE", "RMSE"}.issubset(comparison.columns):
@@ -133,7 +133,7 @@ with tab1:
         st.warning("Forecast CSVs are missing one or more required columns: date, product, channel, predicted_demand.")
 
 with tab2:
-    st.header("Inventory optimization | Resume bullet 2")
+    st.header("Inventory optimization")
     st.write("Compare replenishment-policy simulations against the project goals.")
 
     if tuning is not None and {"safety_z", "cover_days"}.issubset(tuning.columns) and not tuning.empty:
@@ -187,7 +187,7 @@ with tab2:
         note_missing(["forekart_policy_kpis_final.csv"])
 
 with tab3:
-    st.header("Multi-channel demand & promotions | Resume bullet 3")
+    st.header("Multi-channel demand & promotions")
     st.write("Compare observed demand across Website, Mobile App, and Marketplace channels, and inspect promotional versus non-promotional records.")
     if sales is not None and {"channel", "customer_demand", "units_sold"}.issubset(sales.columns):
         df = sales.copy()
