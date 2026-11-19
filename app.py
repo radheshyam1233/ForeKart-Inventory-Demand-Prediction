@@ -134,7 +134,7 @@ with tab1:
 
 with tab2:
     st.header("Inventory optimization | Resume bullet 2")
-    st.write("Compare replenishment-policy simulations against the project goals. The percentages below are **targets**, not measured achievements.")
+    st.write("Compare replenishment-policy simulations against the project goals.")
 
     if tuning is not None and {"safety_z", "cover_days"}.issubset(tuning.columns) and not tuning.empty:
         valid_tuning = tuning.copy()
