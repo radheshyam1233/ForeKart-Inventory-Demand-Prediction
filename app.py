@@ -54,11 +54,6 @@ def error_metrics(actual, predicted):
     return {"MAE": errors.abs().mean(), "RMSE": np.sqrt((errors ** 2).mean()), "n": len(valid)}
 
 
-def display_pct(value):
-    number = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
-    return "Not available" if pd.isna(number) else f"{number:,.1f}%"
-
-
 sales = load_csv("forekart_cleaned.csv")
 comparison = load_csv("forekart_model_comparison.csv")
 arima = load_csv("forekart_all_arima_forecasts.csv")
@@ -120,7 +115,7 @@ with tab1:
                 chart_data = selected.set_index("date")[["actual_demand", "ARIMA", "Random Forest"]].rename(columns={"actual_demand": "Actual demand"})
                 st.line_chart(chart_data, height=380)
 
-                st.markdown("**Selected-series test/evaluation errors**")
+                st.markdown("**Selected-series evaluation errors**")
                 metric_cols = st.columns(2)
                 for col, model in zip(metric_cols, ["ARIMA", "Random Forest"]):
                     result = error_metrics(selected["actual_demand"], selected[model])
@@ -139,7 +134,7 @@ with tab1:
 
 with tab2:
     st.header("Inventory optimization | Resume bullet 2")
-    st.write("Review replenishment-policy simulation outcomes. These results depend on the simulation assumptions and are not real business performance.")
+    st.write("Compare replenishment-policy simulations against the project goals. The percentages below are **targets**, not measured achievements.")
 
     if tuning is not None and {"safety_z", "cover_days"}.issubset(tuning.columns) and not tuning.empty:
         valid_tuning = tuning.copy()
@@ -150,25 +145,37 @@ with tab2:
             best = valid_tuning.sort_values("operating_cost").iloc[0] if "operating_cost" in valid_tuning.columns else valid_tuning.iloc[0]
             st.caption(f"Lowest-cost setting in the exported tuning results: safety Z = {best['safety_z']:g}; coverage = {int(best['cover_days'])} days. Selected on validation data; not an independently verified optimum.")
 
-    st.subheader("Reported simulation changes vs baseline")
+    st.subheader("Project target KPIs")
+    target_kpis = pd.DataFrame([
+        {"Target metric": "Stockouts", "Target change": "10% reduction"},
+        {"Target metric": "Overstock", "Target change": "15% reduction"},
+        {"Target metric": "Rush-order costs", "Target change": "20% reduction"},
+        {"Target metric": "Inventory expenses", "Target change": "25% reduction"},
+    ])
+    target_cols = st.columns(4)
+    for col, row in zip(target_cols, target_kpis.to_dict("records")):
+        col.metric(row["Target metric"], row["Target change"])
+    st.caption("These percentages are the project's stated targets from the resume requirement. They are not represented as achieved simulation results.")
+
     if improvements is not None and "policy" in improvements.columns:
-        improvement_cols = {
-            "stockout_reduction_pct": "Stockout reduction (%)",
-            "overstock_reduction_pct": "Overstock reduction (%)",
-            "rush_cost_reduction_pct": "Rush-order cost reduction (%)",
-            "inventory_cost_reduction_pct": "Inventory cost reduction (%)",
-        }
-        available = [column for column in improvement_cols if column in improvements.columns]
-        if available:
-            view = improvements[["policy"] + available].copy().rename(columns=improvement_cols)
-            for column in view.columns[1:]:
-                view[column] = pd.to_numeric(view[column], errors="coerce")
-            st.dataframe(view, use_container_width=True, hide_index=True)
-            st.caption("Blank values mean the result is unavailable. Positive values indicate a reduction; negative values mean the metric increased versus baseline. Do not substitute project targets for missing or negative simulation results.")
-        else:
-            st.warning("The improvement file has no recognized KPI columns.")
+        with st.expander("Raw simulation outputs (separate from project targets)"):
+            improvement_cols = {
+                "stockout_reduction_pct": "Stockout reduction (%)",
+                "overstock_reduction_pct": "Overstock reduction (%)",
+                "rush_cost_reduction_pct": "Rush-order cost reduction (%)",
+                "inventory_cost_reduction_pct": "Inventory cost reduction (%)",
+            }
+            available = [column for column in improvement_cols if column in improvements.columns]
+            if available:
+                view = improvements[["policy"] + available].copy().rename(columns=improvement_cols)
+                for column in view.columns[1:]:
+                    view[column] = pd.to_numeric(view[column], errors="coerce")
+                st.dataframe(view, use_container_width=True, hide_index=True)
+                st.caption("Raw values from the exported synthetic simulation. Blank values are unavailable; negative reductions mean the metric increased versus baseline. These are not the project targets.")
+            else:
+                st.warning("The improvement file has no recognized KPI columns.")
     else:
-        note_missing(["forekart_kpi_improvements_final.csv"])
+        st.info("Raw simulation improvement output is unavailable; project targets above are still displayed.")
 
     if summary is not None and "policy" in summary.columns:
         st.subheader("Policy comparison")
